@@ -14,6 +14,9 @@ Cada buffer abierto es una tarjeta con su icono de color. La activa resalta (aqu
 
 - **Clic** en una tarjeta para cambiar a ella.
 - Al **pasar el ratón** por encima aparece una `` para cerrarla (si hay cambios sin guardar, pregunta si quieres guardar, descartar o cancelar). Cerrar nunca cierra ventanas: muestran la pestaña vecina.
+
+  ![Hover con la X para cerrar](assets/hover.png)
+
 - `●` marca los buffers con cambios sin guardar.
 - La tarjeta **`+`** abre el buscador para elegir un archivo nuevo.
 
