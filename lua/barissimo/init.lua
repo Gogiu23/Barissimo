@@ -27,11 +27,40 @@ for i, ch in ipairs({ "╭", "─", "╮", "│", "╯", "─", "╰", "│" }) 
 	BORDER[i] = { ch, "ExplorerGrad" .. ({ 1, 2, 3, 4, 5, 4, 3, 2 })[i] }
 end
 
+local function rgb(c)
+	return tonumber(c:sub(2, 3), 16), tonumber(c:sub(4, 5), 16), tonumber(c:sub(6, 7), 16)
+end
+
+-- Color del degradado en t ∈ [0,1], multiplicado por k para oscurecer
+local function grad(t, k)
+	k = k or 1
+	local n = #cfg.colors
+	local x = t * (n - 1)
+	local i = math.min(math.floor(x), n - 2)
+	local f = x - i
+	local r1, g1, b1 = rgb(cfg.colors[i + 1])
+	local r2, g2, b2 = rgb(cfg.colors[i + 2])
+	local function mix(a, b)
+		return math.floor((a + (b - a) * f) * k)
+	end
+	return string.format("#%02x%02x%02x", mix(r1, r2), mix(g1, g2), mix(b1, b2))
+end
+
 local function file_icon(name)
 	if not has_icons then
-		return "", "Normal"
+		return "", nil
 	end
-	return devicons.get_icon(name, vim.fn.fnamemodify(name, ":e"), { default = true })
+	return devicons.get_icon_color(name, vim.fn.fnamemodify(name, ":e"), { default = true })
+end
+
+-- Grupo de highlight con ese color de texto
+local function fg_hl(color)
+	if not color then
+		return "Normal"
+	end
+	local name = "BarissimoFg" .. color:sub(2)
+	api.nvim_set_hl(0, name, { fg = color })
+	return name
 end
 
 local function scan(dir)
@@ -57,9 +86,12 @@ local function render()
 		for _, n in ipairs(scan(dir)) do
 			local ic, hl
 			if n.dir then
-				ic, hl = st.open[n.path] and "" or "", "Directory"
+				-- cada nivel de profundidad un tono más claro del degradado
+				ic, hl = st.open[n.path] and "" or "", fg_hl(grad(0.5 + 0.5 * math.min(depth / 4, 1)))
 			else
-				ic, hl = file_icon(n.name)
+				local color
+				ic, color = file_icon(n.name)
+				hl = fg_hl(color)
 			end
 			local pad = string.rep("  ", depth)
 			lines[#lines + 1] = pad .. ic .. " " .. n.name
@@ -137,17 +169,37 @@ end
 function M.tabline()
 	local s, col = {}, 0
 	st.tabs = {}
-	for _, b in ipairs(api.nvim_list_bufs()) do
-		if vim.bo[b].buflisted then
-			local name = vim.fn.fnamemodify(api.nvim_buf_get_name(b), ":t")
-			if name == "" then
-				name = "[sin nombre]"
-			end
-			local text = " " .. file_icon(name) .. " " .. name .. (vim.bo[b].modified and " ●" or "") .. " "
-			st.tabs[#st.tabs + 1] = { buf = b, col = col }
-			s[#s + 1] = (b == api.nvim_get_current_buf() and "%#TabLineSel#" or "%#TabLine#") .. (text:gsub("%%", "%%%%"))
-			col = col + vim.fn.strdisplaywidth(text)
+	local bufs = vim.tbl_filter(function(b)
+		return vim.bo[b].buflisted
+	end, api.nvim_list_bufs())
+	local fill = api.nvim_get_hl(0, { name = "TabLineFill", link = false }).bg
+	local cur = api.nvim_get_current_buf()
+	local function hl(name, spec)
+		api.nvim_set_hl(0, name, spec)
+		return "%#" .. name .. "#"
+	end
+	for i, b in ipairs(bufs) do
+		local name = vim.fn.fnamemodify(api.nvim_buf_get_name(b), ":t")
+		if name == "" then
+			name = "[sin nombre]"
 		end
+		local ic, icolor = file_icon(name)
+		-- degradado de oscuro a claro a lo largo de las pestañas; las no activas, atenuadas
+		local bg = grad((i - 1) / math.max(#bufs - 1, 1), b == cur and 1 or 0.55)
+		local r, g, bl = rgb(bg)
+		local fg = (0.299 * r + 0.587 * g + 0.114 * bl) > 140 and "#0a1f4d" or "#eaf2ff"
+		local label = " " .. name .. (vim.bo[b].modified and " ●" or "") .. " "
+		st.tabs[i] = { buf = b, col = col }
+		s[#s + 1] = hl("BarissimoCap" .. i, { fg = bg, bg = fill })
+			.. ""
+			.. hl("BarissimoIcon" .. i, { fg = icolor or fg, bg = bg })
+			.. ic
+			.. hl("BarissimoTab" .. i, { fg = fg, bg = bg, bold = b == cur })
+			.. (label:gsub("%%", "%%%%"))
+			.. "%#BarissimoCap"
+			.. i
+			.. "#%#TabLineFill# "
+		col = col + vim.fn.strdisplaywidth("" .. ic .. label .. " ")
 	end
 	return table.concat(s) .. "%#TabLineFill#"
 end
